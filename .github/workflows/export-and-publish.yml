@@ -1,0 +1,46 @@
+name: export-and-publish
+
+# Requires: an export preset named "Linux" committed in export_presets.cfg (Project > Export
+# in the Godot editor — this file can't be hand-written safely, see README) and itch.io
+# credentials as the BUTLER_API_KEY secret.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.7.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Move export templates into place
+        run: |
+          mkdir -v -p ~/.local/share/godot/export_templates
+          mv /root/.local/share/godot/export_templates/4.7.1.stable ~/.local/share/godot/export_templates/4.7.1.stable
+      - name: Export Linux build
+        run: |
+          mkdir -v -p build/linux
+          godot --headless --export-release "Linux" build/linux/night-bloom.x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: build/linux
+
+  publish-itch:
+    needs: export
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-build
+          path: build/linux
+      - name: Install butler
+        run: |
+          curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip butler.zip -d butler
+          chmod +x butler/butler
+      - name: Push to itch.io
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: ./butler/butler push build/linux YOUR_ITCH_USERNAME/night-bloom:linux --userversion "${{ github.ref_name }}"
